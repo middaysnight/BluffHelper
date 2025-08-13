@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Demon Bluff – Player Assist (Deck & Calculator)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --gap: 12px; --radius: 12px; }
+    body { font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif; margin: 0; color: #111; background: #0f172a; }
+    header { padding: 18px 20px; background: #111827; color: #e5e7eb; border-bottom: 1px solid #374151; }
+    header h1 { margin: 0; font-size: 1.1rem; letter-spacing: .3px; }
+    main { padding: 16px; display: grid; gap: var(--gap); grid-template-columns: 1fr 330px; align-items: start; }
+    .card { background: #111827; color: #e5e7eb; border: 1px solid #374151; border-radius: var(--radius); }
+    .card h2 { margin: 0; padding: 12px 14px; font-size: .95rem; border-bottom: 1px solid #374151; color: #93c5fd; }
+    .card .content { padding: 10px 14px; }
+    .grid { display: grid; gap: var(--gap); }
+    .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: .75rem; border:1px solid #374151; color:#d1d5db; }
+    .section { margin-bottom: 18px; }
+    fieldset { border: none; padding: 0; margin: 0; }
+    legend { font-weight: 600; margin-bottom: 8px; color:#fde68a; }
+    label { display: flex; gap: 8px; align-items: center; margin: 6px 0; cursor: pointer; }
+    input[type="checkbox"] { accent-color: #60a5fa; width: 16px; height: 16px; }
+    .muted { color: #9ca3af; font-size: .9rem; }
+    .stat { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px dashed #374151; }
+    .stat:last-child { border-bottom: none; }
+    .stat .k { color:#9ca3af; font-size:.9rem; }
+    .stat .v { font-weight: 700; font-size: 1.05rem; color:#e5e7eb; }
+    .tag { font-size: .72rem; padding: 2px 6px; border-radius: 6px; border:1px solid #374151; color:#a7f3d0; }
+    .hint { font-size: .82rem; color: #a5b4fc; }
+    .foot { padding: 10px 14px; border-top: 1px solid #374151; color:#9ca3af; font-size:.85rem; }
+    @media (max-width: 980px){ main { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Demon Bluff – Deck Selector & Math Assistant <span class="pill">MVP</span></h1>
+  </header>
+
+  <main>
+    <!-- LEFT: Character selection -->
+    <section class="grid cols-2">
+      <div class="card">
+        <h2>Villagers</h2>
+        <div class="content" id="villagers"></div>
+        <div class="foot">Tip: Villagers can be legitimately duplicated by <strong>Shaman</strong> or <strong>Doppelganger</strong>.</div>
+      </div>
+
+      <div class="card">
+        <h2>Outcasts</h2>
+        <div class="content" id="outcasts"></div>
+        <div class="foot">Note: <strong>Drunk</strong> is inherently corrupted; <strong>Puppet</strong> may be created by <strong>Puppeteer</strong>.</div>
+      </div>
+
+      <div class="card">
+        <h2>Minions (Evil)</h2>
+        <div class="content" id="minions"></div>
+        <div class="foot">All minions are <strong>evil</strong> and count toward evils to kill.</div>
+      </div>
+
+      <div class="card">
+        <h2>Demons (Evil)</h2>
+        <div class="content" id="demons"></div>
+        <div class="foot">Demons are <strong>evil</strong> and must be killed to win.</div>
+      </div>
+    </section>
+
+    <!-- RIGHT: Calculations -->
+    <aside class="card">
+      <h2>Deck Math</h2>
+      <div class="content">
+        <div class="section">
+          <div class="hint">Live estimates based on the roles you’ve selected.</div>
+        </div>
+
+        <div class="section">
+          <div class="stat"><div class="k">Max corrupted villagers (excl. Drunk)</div><div class="v" id="stat-corrupt-villagers">0</div></div>
+          <div class="stat"><div class="k">Total corrupted entities (incl. Drunk)</div><div class="v" id="stat-corrupt-total">0</div></div>
+          <div class="stat"><div class="k">Max outcasts in play</div><div class="v" id="stat-outcasts">0</div></div>
+          <div class="stat"><div class="k">Legit duplicate claims budget</div><div class="v" id="stat-duplicates">0</div></div>
+          <div class="stat"><div class="k">Evils to kill (Minions + Demons)</div><div class="v" id="stat-evils">0</div></div>
+        </div>
+
+        <div class="section">
+          <div><span class="tag">Assumption</span> Puppet creation is capped at 1 and requires a villager neighbor.</div>
+          <div class="muted">These are **maximums** given deck composition, not guaranteed board states.</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    // --- DATA -----------------------------------------------------------------
+
+    const DATA = {
+      villagers: [
+        "Alchemist","Architect","Baker","Bard","Bishop","Confessor","Dreamer","Druid",
+        "Empress","Enlightened","Fortune Teller","Gemcrafter","Hunter","Jester","Judge",
+        "Knight","Knitter","Lover","Medium","Oracle","Poet","Scout","Slayer","Witness"
+      ],
+
+      // Outcasts (some are "hazard" roles, not evil)
+      outcasts: [
+        "Drunk",        // inherently corrupted, not curable
+        "Wretch",       // registers as evil to detectors
+        "Bombardier",   // lose if executed
+        "Doppelganger", // duplicates a good villager; truthful
+        "Plague Doctor" // can corrupt 1 good villager & learn evil
+      ],
+
+      // Minions (evil)
+      minions: [
+        "Minion","Twin Minion",
+        "Counsellor",  // adds +1 outcast
+        "Witch",       // block last-card reveal
+        "Poisoner",    // corrupts 1 adjacent villager
+        "Shaman",      // duplicates an in-play villager role (legit double-claim)
+        "Puppeteer"    // can create 1 Puppet (outcast-like)
+      ],
+
+      // Demons (evil)
+      demons: [
+        "Baa",     // adds +1 fake outcast
+        "Pooka",   // corrupts 2 neighbors
+        "Lilis"    // kills every 4 reveals (timer logic elsewhere)
+      ]
+    };
+
+    // --- STATE ---------------------------------------------------------------
+
+    const state = {
+      selected: new Set()
+    };
+
+    // --- RENDER CHECKLISTS ---------------------------------------------------
+
+    function renderList(containerId, list) {
+      const container = document.getElementById(containerId);
+      const fs = document.createElement('fieldset');
+      const legend = document.createElement('legend');
+      legend.textContent = `${list.length} characters`;
+      fs.appendChild(legend);
+
+      list.forEach(name => {
+        const id = `cb-${name.replace(/\s+/g, '-').toLowerCase()}`;
+        const label = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.id = id;
+        cb.addEventListener('change', () => {
+          if (cb.checked) state.selected.add(name);
+          else state.selected.delete(name);
+          updateStats();
+        });
+        const span = document.createElement('span');
+        span.textContent = name;
+        label.appendChild(cb);
+        label.appendChild(span);
+        fs.appendChild(label);
+      });
+
+      container.innerHTML = '';
+      container.appendChild(fs);
+    }
+
+    renderList('villagers', DATA.villagers);
+    renderList('outcasts', DATA.outcasts);
+    renderList('minions',  DATA.minions);
+    renderList('demons',   DATA.demons);
+
+    // --- CALCULATIONS --------------------------------------------------------
+
+    function calcDuplicateBudget(selected) {
+      // Legit duplicate claims come from Shaman (+1 duplicated role) and Doppelganger (+1 copied villager).
+      let budget = 0;
+      if (selected.has("Shaman")) budget += 1;
+      if (selected.has("Doppelganger")) budget += 1;
+      return budget;
+    }
+
+    function calcCorruptionCapacity(selected) {
+      // Max corrupted *villagers* (excluding Drunk).
+      // Plague Doctor: up to 1 random villager corrupted.
+      // Poisoner: 1 adjacent villager corrupted.
+      // Pooka (demon): 2 adjacent villagers corrupted.
+      let cap = 0;
+      if (selected.has("Plague Doctor")) cap += 1;
+      if (selected.has("Poisoner")) cap += 1;
+      if (selected.has("Pooka")) cap += 2;
+      return cap;
+    }
+
+    function countDrunks(selected) {
+      return selected.has("Drunk") ? 1 : 0; // Only 1 copy of each character in deck rules.
+    }
+
+    function calcOutcastsMax(selected) {
+      // Base: number of outcast roles explicitly selected (Drunk, Wretch, Bombardier, Doppelganger, Plague Doctor)
+      let base = [...selected].filter(x => DATA.outcasts.includes(x)).length;
+
+      // Adds:
+      // - Counsellor: +1 outcast added
+      // - Baa (demon): +1 fake outcast to the deck
+      // - Puppeteer: up to +1 Puppet (requires a villager neighbor; here we count the max possibility)
+      if (selected.has("Counsellor")) base += 1;
+      if (selected.has("Baa")) base += 1;
+      if (selected.has("Puppeteer")) base += 1; // assume max one puppet possible
+
+      return base;
+    }
+
+    function calcEvilsToKill(selected) {
+      // Evils = all selected minions + selected demons.
+      let evils = 0;
+      for (const x of selected) {
+        if (DATA.minions.includes(x) || DATA.demons.includes(x)) evils += 1;
+      }
+      return evils;
+    }
+
+    // --- UPDATE UI -----------------------------------------------------------
+
+    function updateStats() {
+      const sel = state.selected;
+
+      const corruptVillagers = calcCorruptionCapacity(sel);
+      const drunkCount = countDrunks(sel);
+      const totalCorruptedEntities = corruptVillagers + drunkCount;
+
+      const outcastsMax = calcOutcastsMax(sel);
+      const duplicateBudget = calcDuplicateBudget(sel);
+      const evils = calcEvilsToKill(sel);
+
+      document.getElementById('stat-corrupt-villagers').textContent = corruptVillagers;
+      document.getElementById('stat-corrupt-total').textContent = totalCorruptedEntities;
+      document.getElementById('stat-outcasts').textContent = outcastsMax;
+      document.getElementById('stat-duplicates').textContent = duplicateBudget;
+      document.getElementById('stat-evils').textContent = evils;
+    }
+
+    // Initialize stats on first load
+    updateStats();
+  </script>
+</body>
+</html>
